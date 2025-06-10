@@ -40,13 +40,20 @@ if __name__ == "__main__":
     fmax = 150e9
     freq = [fmin, fmax]
     ereff = 5.2
-    phi = 30
-    lmax = 5050e-6  # predefine max length... overwrite phi and fmin conditions
+    phi  = 30        # phase margin in degs
+
+    # optional parameters to further constrain the solution
+    lmax = 5050e-6      # bound max length (overwrite calculated value from fmin)
+    length_std = 50e-6  # expected standard deviation in lengths
+    lmin = 50e-6        # minimum length spacing
+    force_integer_multiple = True  # quantize the lengths to multiple of lmin > 0
+    # N = 6             # force the number of lines (for optimizer solution)
 
     # Instantiate the calculator
-    calc = LineLengthCalculator(freq, ereff, phi, length_std=50e-6, 
-                                lmin=50e-6, force_integer_multiple=True, 
-                                polish=True, fit_max_iter=1000, lmax=lmax)
+    calc = LineLengthCalculator(freq, ereff, phi, lmax=lmax, lmin=lmin,
+                                length_std=length_std, 
+                                force_integer_multiple=force_integer_multiple, 
+                                polish=True, fit_max_iter=1000)
     # Calculate lengths
     lengths_optimzed = calc.calc_lengths_optimize()
     lengths_wichmann = calc.calc_length_wichmann()

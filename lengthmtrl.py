@@ -1,19 +1,19 @@
 """
 @author: Ziad (zi.hatab@gmail.com, https://github.com/ZiadHatab)
 
-A script to compute line lengths for multiline TRL calibration, specifically for the algorithm developed in [1,2]. 
-Note, that the results you get here are strictly optimal for the algorithm in [1,2], and might not be optimal for other multiline TRL algorithms.
+A script to compute line lengths for multiline TRL calibration, specifically for the algorithm developed in [1,2].
+Note that the results you get here are strictly optimal for the algorithm in [1,2], and might not be optimal for other multiline TRL algorithms.
 
 Features:
 - Given maximum length and maximum frequency, compute minimum required lines and their lengths.
 - Given minimum frequency, compute maximum required line length.
-- Constrained lengths to have minimum spacing.
-- Constrained lengths solution to minimize sensitivity to length errors provided as standard deviation.
-- predefined solutions using Sparse rulers.
+- Constrain lengths to have minimum spacing.
+- Constrain length solutions to minimize sensitivity to length errors provided as standard deviation.
+- Predefined solutions using sparse rulers (Wichmann and Golomb).
 
-[1] Z. Hatab, M. Gadringer and W. Bösch, "Improving The Reliability of The Multiline TRL Calibration Algorithm," 
+[1] Z. Hatab, M. Gadringer and W. Bösch, "Improving The Reliability of The Multiline TRL Calibration Algorithm,"
 2022 98th ARFTG Microwave Measurement Conference (ARFTG), 2022, pp. 1-5, doi: 10.1109/ARFTG52954.2022.9844064.
-[2] Z. Hatab, M. E. Gadringer, and W. Bösch, "Propagation of Linear Uncertainties through Multiline Thru-Reflect-Line Calibration," 
+[2] Z. Hatab, M. E. Gadringer, and W. Bösch, "Propagation of Linear Uncertainties through Multiline Thru-Reflect-Line Calibration,"
 in IEEE Transactions on Instrumentation and Measurement, vol. 72, pp. 1-9, 2023, doi: 10.1109/TIM.2023.3296123.
 """
 
@@ -24,6 +24,7 @@ class LineLengthCalculator:
     """
     A calculator for determining optimal line lengths for multiline TRL calibration.
     Provides methods for optimized, Wichmann, and Golomb ruler-based line length calculations.
+
     Parameters
     ----------
     freq : array-like
@@ -31,7 +32,7 @@ class LineLengthCalculator:
     ereff : float or array-like
         Effective relative permittivity (scalar or array matching freq).
     phi : float, optional
-        Minimum phase difference between lines in degrees (default: 20).
+        Minimum phase margin in degrees (default: 20).
     lmax : float, optional
         Maximum allowed line length (meters).
     lmin : float, optional
@@ -48,39 +49,48 @@ class LineLengthCalculator:
         If True, restricts lengths to integer multiples of lmin (default: False).
     polish : bool, optional
         If True, performs local search after global optimization (default: False).
+    f_points_scaling : int, optional 
+        Scaling factor for number of frequency points in optimization (default: 10).
     """
     def __init__(self, freq, ereff, phi=20, lmax=None, lmin=0, length_std=0, N=None, obj_type='minmax',
-                 fit_max_iter=1000, force_integer_multiple=False, polish=False):
+                 fit_max_iter=1000, force_integer_multiple=False, polish=False, f_points_scaling=10):
         if force_integer_multiple and lmin == 0:
             raise ValueError("lmin must be nonzero when force_integer_multiple is True")
         self.c0 = 299792458
         self.freq = np.atleast_1d(freq)
+        self.fmin = self.freq[0]
+        self.fmax = self.freq[-1]
         self.ereff = np.atleast_1d(ereff)
         self.phi = phi
-        self.lmax = lmax
+        self.lmax = self.c0/2/self.fmin/np.sqrt(self.ereff[0].real)*(0+self.phi/180) if lmax is None else lmax
         self.lmin = lmin
         self.length_std = length_std
-        self.N = N
+        self.Mmax = np.ceil(self.lmax*2*self.fmax*np.sqrt(self.ereff[-1].real)/self.c0 - 1 + phi/180).astype(int) + 1
+        Mmin = np.ceil(self.lmax*2*(self.fmax-self.fmin)*np.sqrt(self.ereff[-1].real)/self.c0 - 1 + phi/180).astype(int) + 1
+        if self.Mmax % Mmin == 0:
+            self.M = Mmin
+        else:
+            alloptions = np.arange(Mmin+1, self.Mmax+1)
+            self.M =  int( alloptions[self.Mmax % alloptions == 0][0] )
+        self.N = int((1 + np.sqrt(1 + 8*self.M))/2) if N is None else N
         self.obj_type = obj_type
         self.fit_max_iter = fit_max_iter
         self.force_integer_multiple = force_integer_multiple
         self.polish = polish
+        self.f_points_scaling = f_points_scaling
+
+        # internal parameters
         self.optimization_result = None
         self.lengths_opt = None
         self.lengths_wichmann = None
         self.lengths_golomb = None
-        # Internal parameters
-        self.fmin_opt = None
-        self.fmax_opt = None
-        self.nmax = None
-        self.r = None
-        self.s = None
-        self.golomb_N = None
+        self.lengths_chebyshev = None
 
     @staticmethod
     def wichmann_ruler(r: int, s: int) -> list:
         """
-        Generate a Wichmann ruler sequence. https://en.wikipedia.org/wiki/Sparse_ruler
+        Generate a Wichmann ruler sequence. 
+        https://en.wikipedia.org/wiki/Sparse_ruler
 
         Args:
             r (int): Number of repeated segments in the Wichmann construction.
@@ -102,269 +112,7 @@ class LineLengthCalculator:
             current += seg
             marks.append(current)
         return marks
-
-    @staticmethod
-    def kappa(f, lengths, ereff=1-0j, apply_norm=True):
-        """
-        Calculate the kappa metric for a set of line lengths and frequencies.
-
-        Args:
-            f (array-like): Frequencies at which to evaluate kappa (Hz).
-            lengths (array-like): Line lengths (meters).
-            ereff (float or complex, optional): Effective relative permittivity. Defaults to 1-0j.
-            apply_norm (bool, optional): If True, normalize kappa by the sum of |W|. Defaults to True.
-
-        Returns:
-            np.ndarray: Kappa values for each frequency.
-        """
-        f = np.atleast_1d(f)
-        lengths = np.atleast_1d(lengths)
-        c0 = 299792458
-        gamma = 2*np.pi*f/c0*np.sqrt(-ereff*(1+0j))
-        kap = []
-        for g in gamma:
-            y = np.exp(g*lengths)
-            z = 1/y
-            W  = (np.outer(y,z) - np.outer(z,y)).conj()
-            lam = abs(W.conj()*W).sum()/2
-            norm = abs(W).sum()/2 if apply_norm else 1
-            kap.append(lam/norm)
-        return np.array(kap)
-
-    @staticmethod
-    def kappa_jac(f, lengths, ereff=1-0j):
-        """
-        Compute the Jacobian (derivative) of the kappa metric with respect to line lengths.
-
-        Args:
-            f (array-like): Frequencies at which to evaluate the Jacobian (Hz).
-            lengths (array-like): Line lengths (meters).
-            ereff (float or complex, optional): Effective relative permittivity. Defaults to 1-0j.
-
-        Returns:
-            np.ndarray: Jacobian of kappa with respect to line lengths for each frequency.
-        """
-        f = np.atleast_1d(f)
-        lengths = np.atleast_1d(lengths)
-        c0 = 299792458
-        gamma = 2*np.pi*f/c0*np.sqrt(-ereff*(1+0j))
-        kap_jac = []
-        for g in gamma:
-            y = np.exp(g*lengths)
-            z = 1/y
-            Wn = (np.outer(y,z) - np.outer(z,y)).conj()
-            Wn_sym = Wn.copy()
-            i_lower = np.tril_indices_from(Wn, k=-1)
-            Wn_sym[i_lower] = Wn.T[i_lower]
-            Wp = (np.outer(y,z) + np.outer(z,y)).conj()
-            fval = abs(Wn.conj()*Wn).sum()/2
-            f_prime = 2*g*(Wn_sym*Wp).sum(axis=0)
-            gval = abs(Wn).sum()/2
-            Wn_divid_with = Wn.copy()
-            np.fill_diagonal(Wn_divid_with, 1)
-            g_prime = gval*(Wn_sym*Wp/abs(Wn_divid_with)).sum(axis=0)
-            kap_jac.append((gval*f_prime - fval*g_prime)/gval**2)
-        return np.array(kap_jac)
-
-    @staticmethod
-    def obj(x, *args):
-        """
-        Objective function for optimizing line lengths.
-
-        Args:
-            x (np.ndarray): Array of line lengths to be optimized.
-            *args: Tuple containing:
-                - f (np.ndarray): Array of frequencies.
-                - ereff (float or np.ndarray): Effective relative permittivity.
-                - length_std (float): Standard deviation of length error.
-                - obj_type (str): Objective type, either 'minmax' or 'ls'.
-                - force_integer_multiple (bool): If True, restricts lengths to integer multiples of lmin.
-                - lmin (float): Minimum length increment.
-
-        Returns:
-            float: Value of the objective function based on the selected obj_type.
-        """
-        f, ereff, length_std, obj_type, force_integer_multiple, lmin = args
-        if force_integer_multiple:
-            lengths = np.ceil(x/lmin)*lmin
-        else:
-            lengths = x
-        kap = LineLengthCalculator.kappa(f, lengths, ereff=ereff, apply_norm=True)
-        J = LineLengthCalculator.kappa_jac(f, lengths, ereff=ereff)
-        JJT = np.array([x.dot(x.conj()).real for x in J])
-        if obj_type == 'minmax':
-            return (-kap).max() + (length_std**2*JJT).mean()
-        elif obj_type == 'ls':
-            return (-kap**2).mean() + (length_std**2*JJT).mean()
-        else:
-            raise ValueError("obj_type must be 'minmax' or 'ls'")
-
-    def calc_lengths_optimize(self):
-        """
-        Calculates the optimized line lengths using differential evolution.
-
-        Returns:
-            np.ndarray: Optimized line lengths (in meters).
-        """
-        freq = self.freq
-        ereff = self.ereff
-        phi = self.phi
-        lmax = self.lmax
-        lmin = self.lmin
-        length_std = self.length_std
-        N = self.N
-        obj_type = self.obj_type
-        fit_max_iter = self.fit_max_iter
-        force_integer_multiple = self.force_integer_multiple
-        polish = self.polish
-
-        fmin, fmax = freq[0], freq[-1]
-        if lmax is None:
-            n = 0
-            lmax = self.c0/2/fmin/np.sqrt(ereff[0].real)*(n+phi/180)
-            self.lmax = lmax
-        nmax = np.ceil(lmax*2*fmax*np.sqrt(ereff[-1].real)/self.c0 - 1 + phi/180).astype(int) + 1
-        if N is None:
-            N = np.ceil( 1/2 + np.sqrt(1 + 8*nmax)/2 ).astype(int)
-            self.N = N
-        fmin_opt = self.c0/2/np.sqrt(ereff[0].real)/lmax*(0+1/2)
-        fmax_opt = self.c0/2/np.sqrt(ereff[-1].real)/lmax*((nmax-1)+1/2)
-        f = np.linspace(fmin_opt, fmax_opt, nmax*10)
-        if np.size(ereff) == 1:
-            ereff_interp = ereff*np.ones_like(f)
-        else:
-            if len(ereff) != len(freq):
-                raise ValueError("ereff must be a scalar or have the same length as freq")
-            ereff_interp = np.interp(f, freq, ereff, left=ereff[0], right=ereff[-1])
-        linear_constraint = scipy.optimize.LinearConstraint(np.eye(N+1,N, k=-1) - np.eye(N+1,N), 
-                                             [0]+[-lmax]*(N-1)+[lmax], 
-                                             [0]+[-lmin]*(N-1)+[lmax])
-        bounds = [(0, 0)] + [(0, lmax)]*(N-2) + [(lmax, lmax)]
-        if self.golomb_ruler(N) is not None:
-            ruler = self.golomb_ruler(N)
-            x0 = np.array(ruler)*lmax/ruler[-1]
-        else:
-            x0 = self.calc_length_chebyshev(N, lmax)
-        save_sol = []
-        save_iteration_results = lambda xk,convergence: save_sol.append(xk)
-        xx = scipy.optimize.differential_evolution(
-            self.obj, bounds, x0=x0, args=(f, ereff_interp, length_std, obj_type, force_integer_multiple, lmin),
-            disp=True, polish=polish, maxiter=fit_max_iter, 
-            constraints=(linear_constraint),
-            strategy='randtobest1bin', init='sobol',
-            popsize=10, mutation=(0.1,1.9), recombination=0.9, 
-            tol=1e-6,
-            updating='deferred', workers=-1, callback=save_iteration_results
-        )
-        if force_integer_multiple:
-            lengths = np.ceil(xx.x/lmin)*lmin
-        else:
-            lengths = xx.x
-        self.optimization_result = xx
-        self.lengths_opt = lengths
-        self.fmin_opt = fmin_opt
-        self.fmax_opt = fmax_opt
-        self.nmax = nmax
-        return lengths
-
-    def calc_length_wichmann(self):
-        """
-        Calculates the line lengths using the Wichmann sparse ruler construction.
-
-        Returns:
-            np.ndarray: Calculated line lengths (in meters) based on the Wichmann ruler.
-        """
-        fmin = self.freq[0]
-        fmax = self.freq[-1]
-        ereff = self.ereff[0] if np.size(self.ereff) == 1 else self.ereff
-        phi = self.phi
-        lmax = self.lmax
-        force_integer_multiple = self.force_integer_multiple
-        lmin = self.lmin
-        if lmax is None:
-            n = 0
-            lmax = self.c0/2/fmin/np.sqrt(ereff.real)*(n+phi/180)
-            self.lmax = lmax
-        M = np.ceil(lmax*2*fmax*np.sqrt(ereff.real)/self.c0 - 1 + phi/180).astype(int) + 1
-        N = np.ceil( 1/2 + np.sqrt(1 + 8*M)/2 ).astype(int)
-        found = False
-        r = s = None
-        while not found:
-            for r_try in range(0, N):
-                s_try = N - 4*r_try - 3
-                if s_try < 0:
-                    continue
-                M_test = 4*r_try*(r_try+s_try+2) + 3*(s_try+1)
-                if M_test >= M:
-                    found = True
-                    r = r_try
-                    s = s_try
-                    M = M_test
-                    break
-            if not found:
-                N += 1
-        ruler = self.wichmann_ruler(r, s)
-        lengths = np.array(ruler)*lmax/ruler[-1]
-        if force_integer_multiple:
-            lengths = np.ceil(lengths/lmin)*lmin
-        self.lengths_wichmann = lengths
-        return lengths
-
-    def calc_length_golomb(self):
-        """
-        Calculates the line lengths using the Golomb ruler construction.
-
-        Returns:
-            np.ndarray: Calculated line lengths (in meters) based on the Golomb ruler.
-        """
-        fmin = self.freq[0]
-        fmax = self.freq[-1]
-        ereff = self.ereff[0] if np.size(self.ereff) == 1 else self.ereff
-        phi = self.phi
-        lmax = self.lmax
-        force_integer_multiple = self.force_integer_multiple
-        lmin = self.lmin
-        if lmax is None:
-            n = 0
-            lmax = self.c0/2/fmin/np.sqrt(ereff.real)*(n+phi/180)
-            self.lmax = lmax
-        M = np.ceil(lmax*2*fmax*np.sqrt(ereff.real)/self.c0 - 1 + phi/180).astype(int) + 1
-        N = np.ceil( 1/2 + np.sqrt(1 + 8*M)/2 ).astype(int)
-        while True:
-            if N > 28:
-                N = 28
-                print("Warning: Maximum defined Golomb ruler order is 28. Using order 28.")
-            ruler = self.golomb_ruler(N)
-            if ruler is None:
-                raise ValueError(f"No Golomb ruler found for order {N}")
-            if ruler[-1] >= M:
-                break
-            N += 1
-        
-        lengths = np.array(ruler)*lmax/ruler[-1]
-        if force_integer_multiple:
-            lengths = np.ceil(lengths/lmin)*lmin
-        self.lengths_golomb = lengths
-        return lengths
-
-    @staticmethod
-    def calc_length_chebyshev(N, lmax):
-        """
-        Calculate Chebyshev-spaced line lengths between 0 and lmax.
-        https://en.wikipedia.org/wiki/Chebyshev_nodes
-
-        Args:
-            N (int): Number of line lengths.
-            lmax (float): Maximum line length (meters).
-
-        Returns:
-            np.ndarray: Array of Chebyshev-spaced line lengths (meters).
-        """
-        k = np.arange(N)
-        x = 0.5 * (1 - np.cos(np.pi*k/(N-1)))
-        lengths = x*lmax
-        return lengths
-
+    
     @staticmethod
     def golomb_ruler(order):
         """
@@ -409,23 +157,291 @@ class LineLengthCalculator:
         ]
         return next((ruler["ruler"] for ruler in golomb_rulers if ruler["order"] == order), None)
 
+    @staticmethod
+    def kappa(f, lengths, ereff=1-0j, apply_norm=True):
+        """
+        Calculate the kappa metric for a set of line lengths and frequencies.
+
+        Args:
+            f (array-like): Frequencies at which to evaluate kappa (Hz).
+            lengths (array-like): Line lengths (meters).
+            ereff (float or complex, optional): Effective relative permittivity. Defaults to 1-0j.
+            apply_norm (bool, optional): If True, normalize kappa by the sum of |W|. Defaults to True.
+
+        Returns:
+            np.ndarray: Kappa values for each frequency.
+        """
+        f = np.atleast_1d(f)
+        lengths = np.atleast_1d(lengths)
+        c0 = 299792458
+        gamma = 2*np.pi*f/c0*np.sqrt(-ereff*(1+0j))
+        kap = []
+        for g in gamma:
+            y = np.exp(g*lengths)
+            z = 1/y
+            W  = (np.outer(y,z) - np.outer(z,y)).conj()
+            lam = abs(W.conj()*W).sum()/2
+            norm = abs(W).sum()/2 if apply_norm else 1
+            kap.append(lam/norm)
+        return np.array(kap)
+
+    @staticmethod
+    def kappa_jac(f, lengths, ereff=1-0j, apply_norm=True):
+        """
+        Compute the Jacobian (derivative) of the kappa metric with respect to line lengths.
+
+        Args:
+            f (array-like): Frequencies at which to evaluate the Jacobian (Hz).
+            lengths (array-like): Line lengths (meters).
+            ereff (float or complex, optional): Effective relative permittivity. Defaults to 1-0j.
+
+        Returns:
+            np.ndarray: Jacobian of kappa with respect to line lengths for each frequency.
+        """
+        f = np.atleast_1d(f)
+        lengths = np.atleast_1d(lengths)
+        c0 = 299792458
+        gamma = 2*np.pi*f/c0*np.sqrt(-ereff*(1+0j))
+        kap_jac = []
+        for g in gamma:
+            y = np.exp(g*lengths)
+            z = 1/y
+            Wn = (np.outer(y,z) - np.outer(z,y)).conj()
+            Wn_sym = Wn.copy()
+            i_lower = np.tril_indices_from(Wn, k=-1)
+            Wn_sym[i_lower] = Wn.T[i_lower]
+            Wp = (np.outer(y,z) + np.outer(z,y)).conj()
+            fval = abs(Wn.conj()*Wn).sum()/2
+            f_prime = 2*g*(Wn_sym*Wp).sum(axis=0)
+            gval = abs(Wn).sum()/2
+            Wn_divid_with = Wn.copy()
+            np.fill_diagonal(Wn_divid_with, 1)
+            g_prime = gval*(Wn_sym*Wp/abs(Wn_divid_with)).sum(axis=0)
+            if apply_norm:
+                kap_jac.append((gval*f_prime - fval*g_prime)/gval**2)
+            else:
+                kap_jac.append(f_prime)
+
+        return np.array(kap_jac)
+
+    @staticmethod
+    def obj(x, *args):
+        """
+        Objective function for optimizing line lengths.
+
+        Args:
+            x (np.ndarray): Array of line lengths to be optimized.
+            *args: Tuple containing:
+                - f (np.ndarray): Array of frequencies.
+                - ereff (float or np.ndarray): Effective relative permittivity.
+                - length_std (float): Standard deviation of length error.
+                - obj_type (str): Objective type, either 'minmax' or 'ls'.
+                - force_integer_multiple (bool): If True, restricts lengths to integer multiples of lmin.
+                - lmin (float): Minimum length increment.
+
+        Returns:
+            float: Value of the objective function based on the selected obj_type.
+        """
+        f, ereff, length_std, obj_type, force_integer_multiple, lmin = args
+        if force_integer_multiple:
+            lengths = np.ceil(x/lmin)*lmin
+        else:
+            lengths = x
+        kap = LineLengthCalculator.kappa(f, lengths, ereff=ereff, apply_norm=True)
+        J   = LineLengthCalculator.kappa_jac(f, lengths, ereff=ereff)
+        JJT = np.array([x.dot(x.conj()).real for x in J])
+        if obj_type == 'minmax':
+            return (-kap).max() + (length_std**2*JJT).mean()
+        elif obj_type == 'ls':
+            return (-kap**2).mean() + (length_std**2*JJT).mean()
+        else:
+            raise ValueError("obj_type must be 'minmax' or 'ls'")
+
+    def calc_lengths_optimize(self):
+        """
+        Calculates the optimized line lengths using differential evolution.
+
+        Returns:
+            np.ndarray: Optimized line lengths (in meters).
+        """
+        freq  = self.freq
+        ereff = self.ereff
+        lmax  = self.lmax
+        lmin  = self.lmin
+        length_std = self.length_std
+        N = self.N
+        M = self.M       # is minimum number of taps
+        Mmax = self.Mmax # is maximum number of taps 
+        obj_type = self.obj_type
+        fit_max_iter = self.fit_max_iter
+        force_integer_multiple = self.force_integer_multiple
+        polish = self.polish
+        
+        fmin_opt = self.c0/2/np.sqrt(ereff[0].real)/lmax*(Mmax-M+1/2)
+        fmax_opt = self.c0/2/np.sqrt(ereff[-1].real)/lmax*((Mmax-1)+1/2)
+        self.f_opt = np.linspace(fmin_opt, fmax_opt, int(np.ceil(M*self.f_points_scaling)))
+        if np.size(ereff) == 1:
+            ereff_interp = ereff*np.ones_like(self.f_opt)
+        else:
+            if len(ereff) != len(freq):
+                raise ValueError("ereff must be a scalar or have the same length as freq")
+            ereff_interp = np.interp(self.f_opt, freq, ereff, left=ereff[0], right=ereff[-1])
+        
+        linear_constraint = scipy.optimize.LinearConstraint(np.eye(N+1,N, k=-1) - np.eye(N+1,N), 
+                                             [0]+[-lmax]*(N-1)+[lmax], 
+                                             [0]+[-lmin]*(N-1)+[lmax])
+        bounds = [(0, 0)] + [(0, lmax)]*(N-2) + [(lmax, lmax)]
+
+        # set initial value... use predefined method to be close as possible
+        golomb_ruler = self.golomb_ruler(N)
+        if golomb_ruler is not None:
+            x0 = np.array(golomb_ruler)*lmax/golomb_ruler[-1]
+        else:
+            x0 = self.calc_length_chebyshev()
+            x0 = x0*lmax/x0[-1]  # ensure the answer is within bounds when force_integer_multiple==True
+
+        # run the optimization
+        save_sol = []
+        save_iteration_results = lambda xk,convergence: save_sol.append(xk)
+        xx = scipy.optimize.differential_evolution(
+            self.obj, bounds, x0=x0, args=(self.f_opt, ereff_interp, length_std, obj_type, force_integer_multiple, lmin),
+            disp=True, polish=polish, maxiter=fit_max_iter, 
+            constraints=(linear_constraint),
+            strategy='randtobest1bin', init='sobol',
+            popsize=10, mutation=(0.1,1.9), recombination=0.9, 
+            tol=1e-6,
+            updating='deferred', workers=-1, callback=save_iteration_results
+        )
+        # make answer multiple of some elemntry unit lmin
+        # if lmin == 0 and force_integer_multiple == True, the whole script wont work.
+        if force_integer_multiple:
+            lengths = np.ceil(xx.x/lmin)*lmin
+        else:
+            lengths = xx.x
+        
+        self.optimization_result = xx
+        self.lengths_opt = lengths
+        return lengths
+
+    def calc_length_wichmann(self, force_use_N=False):
+        """
+        Calculates the line lengths using the Wichmann sparse ruler construction.
+
+        Returns:
+            np.ndarray: Calculated line lengths (in meters) based on the Wichmann ruler.
+        """
+        lmax = self.lmax
+        force_integer_multiple = self.force_integer_multiple
+        lmin = self.lmin
+        M = self.M
+        N = self.N
+        found = False
+        r = s = None
+        if force_use_N:
+            r = 0
+            s = N - 3
+            found = True
+        else:
+            while not found:
+                for r_try in range(0, N):
+                    s_try = N - 4*r_try - 3
+                    if s_try < 0:
+                        continue
+                    M_test = 4*r_try*(r_try+s_try+2) + 3*(s_try+1)
+                    if M_test >= M:
+                        found = True
+                        r = r_try
+                        s = s_try
+                        M = M_test
+                        break
+                if not found:
+                    N += 1
+            if N != self.N:
+                print(f"Warning: Best found Wichmann sparse ruler has length N={N}, which differs from requested N={self.N}.")
+
+        ruler = self.wichmann_ruler(r, s)
+        ruler = ruler if self.N > 2 else ruler[:2]
+
+        lengths = np.array(ruler)*lmax/ruler[-1]
+        if force_integer_multiple:
+            lengths = np.ceil(lengths/lmin)*lmin
+        self.lengths_wichmann = lengths
+        return lengths
+
+    def calc_length_golomb(self, force_use_N=False):
+        """
+        Calculates the line lengths using the Golomb ruler construction.
+
+        Returns:
+            np.ndarray: Calculated line lengths (in meters) based on the Golomb ruler.
+        """
+        lmax = self.lmax
+        force_integer_multiple = self.force_integer_multiple
+        lmin = self.lmin
+        M = self.M
+        N_max = 28
+        N = min(self.N, N_max)  # Cap N at 28 (maximum defined Golomb ruler order)
+        
+        # Find smallest N that satisfies M requirement
+        while True:
+            ruler = self.golomb_ruler(N)
+            if ruler is None:
+                raise ValueError(f"No Golomb ruler found for order {N}")
+            if ruler[-1] >= M:
+                break
+            if N == N_max:
+                print(f"Warning: Using maximum available Golomb ruler (N={N_max})")
+                break
+            N += 1
+            
+        lengths = np.array(ruler)*lmax/ruler[-1]
+        if force_integer_multiple:
+            lengths = np.ceil(lengths/lmin)*lmin
+        self.lengths_golomb = lengths
+        return lengths
+
+    def calc_length_chebyshev(self):
+        """
+        Calculate N Chebyshev-spaced line lengths between 0 and lmax.
+        https://en.wikipedia.org/wiki/Chebyshev_nodes
+
+        Returns:
+            np.ndarray: Array of Chebyshev-spaced line lengths (meters).
+        """
+        N = self.N
+        lmax = self.lmax
+        lmin = self.lmin
+        force_integer_multiple = self.force_integer_multiple
+        k = np.arange(N)
+        x = 0.5*(1 - np.cos(np.pi*k/(N - 1)))
+        lengths = x*lmax
+        if force_integer_multiple:
+            lengths = np.ceil(lengths/lmin)*lmin
+        self.lengths_chebyshev = lengths
+        return lengths
+
 if __name__ == "__main__":
-    fmin = 2e9
+    fmin = 1e9
     fmax = 150e9
     freq = [fmin, fmax]
     ereff = 5.2
-    phi = 30
+    phi  = 30
+    length_std = 50e-6
+    lmin = 50e-6
+    
+    # this enforces max length and number of lines
     lmax = 5050e-6
-
+    N = 6
+    
     # Instantiate the calculator
-    calc = LineLengthCalculator(freq, ereff, phi, length_std=50e-6, 
-                                lmin=50e-6, force_integer_multiple=True, 
-                                polish=True, fit_max_iter=1000, lmax=lmax)
+    calc = LineLengthCalculator(freq, ereff, phi, lmax=lmax, lmin=lmin, N=N,
+                                length_std=length_std, force_integer_multiple=True, 
+                                polish=True, fit_max_iter=1000)
     # Calculate optimized lengths
     lengths_optimzed = calc.calc_lengths_optimize()
     lengths_wichmann = calc.calc_length_wichmann()
     lengths_golomb = calc.calc_length_golomb()
-    lengths_industry = np.array([0, 250, 700, 1600, 3300, 5050])*1e-6
+    lengths_industry = np.array([0, 250, 700, 1600, 3300, 5050])*1e-6  # typical ISS lengths
     N = calc.N
 
     print("Optimized lengths (mm):", lengths_optimzed*1e3)
@@ -452,7 +468,7 @@ if __name__ == "__main__":
     plt.xlim(0, f[-1]/1e9)
     plt.grid(True)
     plt.legend()
-
+    
     plt.show()
 
 # EOF
