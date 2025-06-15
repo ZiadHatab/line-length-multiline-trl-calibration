@@ -43,7 +43,7 @@ class LineLengthCalculator:
         Number of lines (if None, computed automatically).
     obj_type : str, optional
         Objective type for optimization: 'minmax' or 'ls' (default: 'minmax').
-    fit_max_iter : int, optional
+    opt_max_iter : int, optional
         Maximum number of optimization iterations (default: 1000).
     force_integer_multiple : bool, optional
         If True, restricts lengths to integer multiples of lmin (default: False).
@@ -53,7 +53,7 @@ class LineLengthCalculator:
         Scaling factor for number of frequency points in optimization (default: 10).
     """
     def __init__(self, freq, ereff, phi=20, lmax=None, lmin=0, length_std=0, N=None, obj_type='minmax',
-                 fit_max_iter=1000, force_integer_multiple=False, polish=False, f_points_scaling=10):
+                 opt_max_iter=1000, force_integer_multiple=False, polish=False, f_points_scaling=10):
         if force_integer_multiple and lmin == 0:
             raise ValueError("lmin must be nonzero when force_integer_multiple is True")
         self.c0 = 299792458
@@ -74,7 +74,7 @@ class LineLengthCalculator:
             self.M =  int( alloptions[self.Mmax % alloptions == 0][0] )
         self.N = int((1 + np.sqrt(1 + 8*self.M))/2) if N is None else N
         self.obj_type = obj_type
-        self.fit_max_iter = fit_max_iter
+        self.opt_max_iter = opt_max_iter
         self.force_integer_multiple = force_integer_multiple
         self.polish = polish
         self.f_points_scaling = f_points_scaling
@@ -244,7 +244,7 @@ class LineLengthCalculator:
         """
         f, ereff, length_std, obj_type, force_integer_multiple, lmin = args
         if force_integer_multiple:
-            lengths = np.ceil(x/lmin)*lmin
+            lengths = np.round(x/lmin)*lmin
         else:
             lengths = x
         kap = LineLengthCalculator.kappa(f, lengths, ereff=ereff, apply_norm=True)
@@ -273,7 +273,7 @@ class LineLengthCalculator:
         M = self.M       # is minimum number of taps
         Mmax = self.Mmax # is maximum number of taps 
         obj_type = self.obj_type
-        fit_max_iter = self.fit_max_iter
+        opt_max_iter = self.opt_max_iter
         force_integer_multiple = self.force_integer_multiple
         polish = self.polish
         
@@ -305,17 +305,29 @@ class LineLengthCalculator:
         save_iteration_results = lambda xk,convergence: save_sol.append(xk)
         xx = scipy.optimize.differential_evolution(
             self.obj, bounds, x0=x0, args=(self.f_opt, ereff_interp, length_std, obj_type, force_integer_multiple, lmin),
-            disp=True, polish=polish, maxiter=fit_max_iter, 
+            disp=True, polish=polish, maxiter=opt_max_iter, 
             constraints=(linear_constraint),
-            strategy='randtobest1bin', init='sobol',
-            popsize=10, mutation=(0.1,1.9), recombination=0.9, 
-            tol=1e-6,
+            tol=1e-6, atol = 1e-9,
+            seed=42, init='sobol', recombination=0.4,
+            mutation=(0.6, 1.2), popsize=20, strategy='currenttobest1bin',
             updating='deferred', workers=-1, callback=save_iteration_results
         )
+        '''
+            strategy='randtobest1bin',     # Strategy that can improve search efficiency.
+            popsize=20,                    # Increase population for a broader search.
+            mutation=(0.6, 1.2),           # Using a range for mutation to encourage diversity.
+            recombination=0.9,             # High recombination rate to mix the candidate solutions.
+            maxiter=2000,                  # Provide enough iterations for convergence.
+            tol=1e-5,                      # Tighter tolerance to delay premature convergence.
+            init='latinhypercube',         # Better initialization over the domain.
+            polish=False,                  # Disable polishing to avoid local convergence overriding global search.
+            disp=True,                     # To display convergence messages for debugging.
+            seed=42                        # Set a seed to ensure reproducibility.
+        '''
         # make answer multiple of some elemntry unit lmin
         # if lmin == 0 and force_integer_multiple == True, the whole script wont work.
         if force_integer_multiple:
-            lengths = np.ceil(xx.x/lmin)*lmin
+            lengths = np.round(xx.x/lmin)*lmin
         else:
             lengths = xx.x
         
@@ -364,7 +376,7 @@ class LineLengthCalculator:
 
         lengths = np.array(ruler)*lmax/ruler[-1]
         if force_integer_multiple:
-            lengths = np.ceil(lengths/lmin)*lmin
+            lengths = np.round(lengths/lmin)*lmin
         self.lengths_wichmann = lengths
         return lengths
 
@@ -396,7 +408,7 @@ class LineLengthCalculator:
             
         lengths = np.array(ruler)*lmax/ruler[-1]
         if force_integer_multiple:
-            lengths = np.ceil(lengths/lmin)*lmin
+            lengths = np.round(lengths/lmin)*lmin
         self.lengths_golomb = lengths
         return lengths
 
@@ -416,7 +428,7 @@ class LineLengthCalculator:
         x = 0.5*(1 - np.cos(np.pi*k/(N - 1)))
         lengths = x*lmax
         if force_integer_multiple:
-            lengths = np.ceil(lengths/lmin)*lmin
+            lengths = np.round(lengths/lmin)*lmin
         self.lengths_chebyshev = lengths
         return lengths
 
@@ -436,7 +448,7 @@ if __name__ == "__main__":
     # Instantiate the calculator
     calc = LineLengthCalculator(freq, ereff, phi, lmax=lmax, lmin=lmin, N=N,
                                 length_std=length_std, force_integer_multiple=True, 
-                                polish=True, fit_max_iter=1000)
+                                polish=True, opt_max_iter=1000)
     # Calculate optimized lengths
     lengths_optimzed = calc.calc_lengths_optimize()
     lengths_wichmann = calc.calc_length_wichmann()

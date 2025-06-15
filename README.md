@@ -33,7 +33,8 @@ Below is an example demonstrating how to compute the line lengths. You only need
 
 ```python
 import numpy as np
-from lengthmtrl import LineLengthCalculator
+# my code
+from lengthcalc import LineLengthCalculator
 
 if __name__ == "__main__":
     fmin = 2e9
@@ -53,12 +54,30 @@ if __name__ == "__main__":
     calc = LineLengthCalculator(freq, ereff, phi, lmax=lmax, lmin=lmin,
                                 length_std=length_std, 
                                 force_integer_multiple=force_integer_multiple, 
-                                polish=True, fit_max_iter=1000)
+                                polish=True, opt_max_iter=1000)
     # Calculate lengths
     lengths_optimzed = calc.calc_lengths_optimize()
     lengths_wichmann = calc.calc_length_wichmann()
     lengths_golomb = calc.calc_length_golomb()
 ```
+
+## Examples
+
+The provided examples demonstrate various use cases, including dispersive and lossy transmission lines with frequency-dependent characteristics, as well as line length calculations for waveguide applications. Each example file contains detailed comments explaining different scenarios. Note that the optimization process duration varies from several minutes to longer, depending on the problem complexity and chosen constraints.
+
+The primary objective in finding optimal lengths is to minimize and distribute uncertainty across frequencies when measurement perturbations occur. In [example-3.py](https://github.com/ZiadHatab/line-length-multiline-trl-calibration/blob/main/example-3.py), a Monte Carlo analysis (5000 trials) demonstrates that optimized lengths perform better across frequencies compared to state-of-the-art commercial ISS lengths. This improvement is illustrated in the plot below, showing the mean absolute error of normalized error terms. Notice how the higher error peaks from commercial ISS lengths correlate with the dips in the normalized eigenvalue shown in the subsequent plot.
+
+![MAE_normalized_error_terms](./Images/mc_analysis.png)
+_MAE of normalized error terms._
+
+![Normalized_eigenvalue](./Images/normalized_eigenvalue.png)
+_Normalized eigenvalue._
+
+> **Notes:**
+>
+> - Some of the example files require additional libraries. Please check the header for exact required libraries.
+>
+> - Transmission line models were taken from here: <https://github.com/ZiadHatab/transmission-line-models>
 
 ## References
 
