@@ -252,7 +252,7 @@ if __name__=='__main__':
     
     # Run MC for commercial, optimized, and microwave101 lengths
     # Monte Carlo simulation 
-    M = 5000 # number of MC runs
+    M = 10 # number of MC runs
     cpw_MC = copy.deepcopy(cpw)    
     cal_MC_orig = []
     cal_MC_opt = []
