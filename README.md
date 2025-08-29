@@ -45,7 +45,7 @@ if __name__ == "__main__":
 
     # optional parameters to further constrain the solution
     lmax = 5050e-6      # bound max length (overwrite calculated value from fmin)
-    length_std = 50e-6  # expected standard deviation in lengths
+    length_std = 20e-6  # expected standard deviation in lengths
     lmin = 50e-6        # minimum length spacing
     force_integer_multiple = True  # quantize the lengths to multiple of lmin > 0
     # N = 6             # force the number of lines (for optimizer solution)
@@ -63,15 +63,15 @@ if __name__ == "__main__":
 
 ## Examples
 
-The provided examples demonstrate various use cases, including dispersive and lossy transmission lines with frequency-dependent characteristics, as well as line length calculations for waveguide applications. Each example file contains detailed comments explaining different scenarios. Note that the optimization process duration varies from several minutes to longer, depending on the problem complexity and chosen constraints.
+The provided examples demonstrate various use cases, including dispersive and lossy transmission lines with frequency-dependent characteristics, as well as line length calculations for waveguide applications. Note that the optimization process duration varies from several minutes to longer, depending on the problem complexity and chosen constraints.
 
-The primary objective in finding optimal lengths is to minimize and distribute uncertainty across frequencies when measurement perturbations occur. In [example-3.py](https://github.com/ZiadHatab/line-length-multiline-trl-calibration/blob/main/example-3.py), a Monte Carlo analysis (5000 trials) demonstrates that optimized lengths perform better across frequencies compared to state-of-the-art commercial ISS lengths. This improvement is illustrated in the plot below, showing the mean absolute error of normalized error terms. Notice how the higher error peaks from commercial ISS lengths correlate with the dips in the normalized eigenvalue shown in the subsequent plot.
+The primary objective in determining optimal line lengths is to minimize and evenly distribute uncertainty across frequencies when measurement perturbations occur. In [example-3.py](https://github.com/ZiadHatab/line-length-multiline-trl-calibration/blob/main/example-3.py), a Monte Carlo analysis (5000 trials) demonstrates that optimized lengths outperform state-of-the-art commercial ISS lengths across the frequency range. This improvement is illustrated in the plot below, which shows the mean absolute error of normalized error terms. Notice how the higher error peaks from commercial ISS lengths correspond with the inverse eigenvalue shown in the subsequent plot. This is because the inverse of the eigenvalue is proportional to the uncertainties in the eigenvectors, which, in this context, represent the error terms for the calibration.
 
 ![MAE_normalized_error_terms](./Images/mc_analysis.png)
 _MAE of normalized error terms._
 
-![Normalized_eigenvalue](./Images/normalized_eigenvalue.png)
-_Normalized eigenvalue._
+![Normalized_eigenvalue](./Images/inverse_eigenvalue.png)
+_Inverse eigenvalue._
 
 > **Notes:**
 >

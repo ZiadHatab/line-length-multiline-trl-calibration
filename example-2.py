@@ -57,7 +57,7 @@ if __name__ == "__main__":
     plt.plot(f/1e9, kap3, label="Golomb", lw=2)
     plt.xlabel('Frequency (GHz)')
     plt.ylabel('Normalized eigenvalue')
-    plt.title('Minimum parameters provided')
+    plt.title('Waveguide WR-12 example. Minimum parameters provided')
     plt.ylim(0, 2)
     plt.xlim(f[0]/1e9, f[-1]/1e9)
     plt.grid(True)
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     
     # optional parameters to further constrain the solution
     lmax = 5e-3          # bound max length
-    length_std = 50e-6   # expected standard deviation in lengths (for the optimizer method)
+    length_std = 20e-6   # expected standard deviation in lengths (for the optimizer method)
     lmin = 100e-6        # minimum length spacing
     force_integer_multiple = True  # quantize the lengths to multiple of lmin > 0
     polish = True        # run an additional local minimizer after the global one
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     plt.plot(f/1e9, kap3, label="Golomb", lw=2)
     plt.xlabel('Frequency (GHz)')
     plt.ylabel('Normalized eigenvalue')
-    plt.title('Minimum parameters provided')
+    plt.title('Waveguide WR-12 example. Constrained maximum length.')
     plt.ylim(0, 2)
     plt.xlim(f[0]/1e9, f[-1]/1e9)
     plt.grid(True)
@@ -175,7 +175,7 @@ if __name__ == "__main__":
     plt.semilogy(f/1e9, kap3, label="Golomb", lw=2)
     plt.xlabel('Frequency (GHz)')
     plt.ylabel('Normalized eigenvalue')
-    plt.title('Further constrained solution')
+    plt.title('Thin-film lossy MS example.')
     plt.ylim(0.1, 1000)
     plt.xlim(0, f[-1]/1e9)
     plt.grid(True)

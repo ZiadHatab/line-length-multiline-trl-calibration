@@ -79,7 +79,7 @@ if __name__ == "__main__":
     
     # optional parameters to further constrain the solution
     lmax = 10e-3         # bound max length (overwrite calculated value from fmin)
-    length_std = 50e-6   # expected standard deviation in lengths (for the optimizer method)
+    length_std = 20e-6   # expected standard deviation in lengths (for the optimizer method)
     lmin = 200e-6        # minimum length spacing
     force_integer_multiple = True  # quantize the lengths to multiple of lmin > 0
     # N = 6              # force the number of lines (for optimizer solution)

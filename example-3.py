@@ -179,9 +179,9 @@ if __name__=='__main__':
     uSreflect = L_cov  # measured reflect 
     
     # length uncertainties
-    l_std = 40e-6  # for the line
+    l_std = 20e-6  # for the line
     ulengths  = l_std**2  
-    l_open_std = 40e-6 # uncertainty in length used for the reflect
+    l_open_std = 20e-6 # uncertainty in length used for the reflect
     
     # cross-section uncertainties
     w_std   = 2.55e-6
@@ -207,7 +207,7 @@ if __name__=='__main__':
     phi   = 30
     # constrain the solution
     lmax = line_lengths_orig[-1]
-    length_std = 40e-6   # expected standard deviation in lengths (for the optimizer method)
+    length_std = 20e-6   # expected standard deviation in lengths (for the optimizer method)
     lmin = 50e-6         # minimum length spacing
     force_integer_multiple = True  # quantize the lengths to multiple of lmin > 0
     N = 6                # force the number of lines (for optimizer solution)
@@ -227,9 +227,9 @@ if __name__=='__main__':
     #line_lengths_opt = np.array([0., 0.4, 0.8, 2.5, 3.75, 5.05])*1e-3
 
     ## plot normalized eigenvalue vs frequency
-    kap  = calc.kappa(f, line_lengths_orig, ereff=ereff)    
-    kap2 = calc.kappa(f, line_lengths_opt, ereff=ereff)
-    kap3 = calc.kappa(f, line_lengths_m101, ereff=ereff)    
+    lam1 = calc.kappa(f, line_lengths_orig, ereff=ereff, apply_norm=False)    
+    lam2 = calc.kappa(f, line_lengths_opt, ereff=ereff, apply_norm=False)
+    lam3 = calc.kappa(f, line_lengths_m101, ereff=ereff, apply_norm=False)    
     with PlotSettings(14):
         # Define highlight regions
         highlight_regions = [(35, 50), (70, 90)]
@@ -239,20 +239,21 @@ if __name__=='__main__':
         fig.set_dpi(600)
         for start, end in highlight_regions:
             plt.axvspan(start, end, color=highlight_color, alpha=highlight_alpha)
-        plt.plot(f/1e9, kap, label="Commercial ISS", lw=2, marker='>', markevery=25, markersize=10)
-        plt.plot(f/1e9, kap2, label="Optimized", lw=2, marker='<', markevery=25, markersize=10) 
-        plt.plot(f/1e9, kap3, label="Microwave101", lw=2, marker='^', markevery=25, markersize=10)
+        plt.semilogy(f/1e9, 1/lam1, label=f'Commercial ISS: [{", ".join([f"{l*1e3:.2f}" for l in line_lengths_orig])}] mm', lw=2, marker='>', markevery=25, markersize=10)
+        plt.semilogy(f/1e9, 1/lam2, label=f'Optimized: [{", ".join([f"{l*1e3:.2f}" for l in line_lengths_opt])}] mm', lw=2, marker='<', markevery=25, markersize=10)
+        plt.semilogy(f/1e9, 1/lam3, label=f'Microwave101: [{", ".join([f"{l*1e3:.2f}" for l in line_lengths_m101])}] mm', lw=2, marker='^', markevery=25, markersize=10)
         plt.xlabel('Frequency (GHz)')
-        plt.ylabel('Normalized eigenvalue')
-        plt.ylim(0, 2)
-        plt.xlim(0, f[-1]/1e9)
+        plt.ylabel(r'Inverse eigenvalue $1/\lambda$')
+        plt.ylim(0.01, 1)
+        #plt.yticks(np.arange(0, 0.0001, 0.002))
+        plt.xlim(0, 150)
+        plt.xticks(np.arange(0, 150.1, 30))
         #plt.grid(True)
         plt.legend()
     
-    
     # Run MC for commercial, optimized, and microwave101 lengths
     # Monte Carlo simulation 
-    M = 10 # number of MC runs
+    M = 5 # number of MC runs
     cpw_MC = copy.deepcopy(cpw)    
     cal_MC_orig = []
     cal_MC_opt = []
@@ -380,9 +381,9 @@ if __name__=='__main__':
         ax = axs[1,1]
         for start, end in highlight_regions:
             ax.axvspan(start, end, color=highlight_color, alpha=highlight_alpha)
-        ax.plot(f*1e-9, mag2db(b21_orig), lw=2, label=f'Commercial ISS: [{", ".join([f"{l*1e3:.2f}" for l in line_lengths_orig])}]mm', marker='>', markevery=25, markersize=10)
-        ax.plot(f*1e-9, mag2db(b21_opt), lw=2, label=f'Optimized: [{", ".join([f"{l*1e3:.2f}" for l in line_lengths_opt])}]mm', marker='<', markevery=25, markersize=10)
-        ax.plot(f*1e-9, mag2db(b21_m101), lw=2, label=f'Microwave101: [{", ".join([f"{l*1e3:.2f}" for l in line_lengths_m101])}]mm', marker='^', markevery=25, markersize=10)
+        ax.plot(f*1e-9, mag2db(b21_orig), lw=2, label=f'Commercial ISS: [{", ".join([f"{l*1e3:.2f}" for l in line_lengths_orig])}] mm', marker='>', markevery=25, markersize=10)
+        ax.plot(f*1e-9, mag2db(b21_opt), lw=2, label=f'Optimized: [{", ".join([f"{l*1e3:.2f}" for l in line_lengths_opt])}] mm', marker='<', markevery=25, markersize=10)
+        ax.plot(f*1e-9, mag2db(b21_m101), lw=2, label=f'Microwave101: [{", ".join([f"{l*1e3:.2f}" for l in line_lengths_m101])}] mm', marker='^', markevery=25, markersize=10)
         ax.set_xlabel('Frequency (GHz)')
         ax.set_ylabel('MAE(b21) (dB)')
         ax.set_xlim(0,150)
