@@ -7,6 +7,8 @@ This repository contains code to calculate the line lengths for multiline TRL ca
 
 This procedure is specifically designed to provide robust line lengths for the multiline TRL algorithm described in [1,2]. Also, refer to <https://github.com/ZiadHatab/multiline-trl-calibration>.
 
+For mathematical details for computing the lengths, please refer to [3].
+
 **Basic Features:**
 - Compute the minimum required number of lines and their lengths based on frequency requirements.
 - Calculate the maximum allowable line length from the minimum frequency.
@@ -84,6 +86,8 @@ _Inverse eigenvalue._
 [1] Z. Hatab, M. Gadringer and W. Bösch, "Improving The Reliability of The Multiline TRL Calibration Algorithm," 2022 98th ARFTG Microwave Measurement Conference (ARFTG), 2022, pp. 1-5, [doi:10.1109/ARFTG52954.2022.9844064](https://doi.org/10.1109/ARFTG52954.2022.9844064).
 
 [2] Z. Hatab, M. E. Gadringer, and W. Bösch, "Propagation of Linear Uncertainties through Multiline Thru-Reflect-Line Calibration," in IEEE Transactions on Instrumentation and Measurement, vol. 72, pp. 1-9, 2023, [doi:10.1109/TIM.2023.3296123](https://doi.org/10.1109/TIM.2023.3296123).
+
+[3] Z. Hatab, M. E. Gadringer, and W. Bösch, "The Choice of Line Lengths in Multiline Thru-Reflect-Line Calibration," arXiv e-print: <https://arxiv.org/abs/2512.18641>
 
 ## License
 
