@@ -81,13 +81,17 @@ _Inverse eigenvalue._
 >
 > - Transmission line models were taken from here: <https://github.com/ZiadHatab/transmission-line-models>
 
+## Citing
+
+If you use this code, please cite [1,2,3].
+
 ## References
 
 [1] Z. Hatab, M. Gadringer and W. Bösch, "Improving The Reliability of The Multiline TRL Calibration Algorithm," 2022 98th ARFTG Microwave Measurement Conference (ARFTG), 2022, pp. 1-5, [doi:10.1109/ARFTG52954.2022.9844064](https://doi.org/10.1109/ARFTG52954.2022.9844064).
 
 [2] Z. Hatab, M. E. Gadringer, and W. Bösch, "Propagation of Linear Uncertainties through Multiline Thru-Reflect-Line Calibration," in IEEE Transactions on Instrumentation and Measurement, vol. 72, pp. 1-9, 2023, [doi:10.1109/TIM.2023.3296123](https://doi.org/10.1109/TIM.2023.3296123).
 
-[3] Z. Hatab, M. E. Gadringer, and W. Bösch, "The Choice of Line Lengths in Multiline Thru-Reflect-Line Calibration," arXiv e-print: <https://arxiv.org/abs/2512.18641>
+[3] Z. Hatab, M. E. Gadringer, and W. Bösch, "The Choice of Line Lengths in Multiline Thru-Reflect-Line Calibration," in IEEE Transactions on Instrumentation and Measurement, vol. 75, pp. 8005423-8005423, 2026, doi: [10.1109/TIM.2026.3704158](https://doi.org/10.1109/TIM.2026.3704158).
 
 ## License
 

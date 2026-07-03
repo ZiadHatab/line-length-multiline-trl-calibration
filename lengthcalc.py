@@ -2,7 +2,8 @@
 @author: Ziad (zi.hatab@gmail.com, https://github.com/ZiadHatab)
 
 A script to compute line lengths for multiline TRL calibration, specifically for the algorithm developed in [1,2].
-Note that the results you get here are strictly optimal for the algorithm in [1,2], and might not be optimal for other multiline TRL algorithms.
+Note that the results you get here are strictly optimal for the algorithm in [1,2], 
+and might not be optimal for other multiline TRL algorithms. See [3] for details on how lengths are computed.
 
 Features:
 - Given maximum length and maximum frequency, compute minimum required lines and their lengths.
@@ -15,6 +16,8 @@ Features:
 2022 98th ARFTG Microwave Measurement Conference (ARFTG), 2022, pp. 1-5, doi: 10.1109/ARFTG52954.2022.9844064.
 [2] Z. Hatab, M. E. Gadringer, and W. Bösch, "Propagation of Linear Uncertainties through Multiline Thru-Reflect-Line Calibration,"
 in IEEE Transactions on Instrumentation and Measurement, vol. 72, pp. 1-9, 2023, doi: 10.1109/TIM.2023.3296123.
+[3] Z. Hatab, M. E. Gadringer and W. Bösch, "The Choice of Line Lengths in Multiline Thru-Reflect-Line Calibration," 
+in IEEE Transactions on Instrumentation and Measurement, vol. 75, pp. 8005423-8005423, 2026, doi: 10.1109/TIM.2026.3704158
 """
 
 import numpy as np
